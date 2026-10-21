@@ -1,0 +1,619 @@
+name: Build BBBL-Core
+
+on:
+  push:
+    branches: [ "main", "master", "dev" ]
+    tags:     [ "v*" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a GitHub Release after build"
+        required: false
+        default: "false"
+        type: choice
+        options: [ "true", "false" ]
+
+# Cancel in-progress runs on the same branch / PR so we don't waste runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Minimum Rust version declared in Cargo.toml
+  RUST_MIN: "1.98"
+
+# ============================================================
+# JOBS
+# ============================================================
+jobs:
+
+  # ----------------------------------------------------------
+  # 1. Quick check: fmt + clippy on the host triple only.
+  #    Runs on every push/PR so issues surface fast.
+  # ----------------------------------------------------------
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bbbl-core
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust ${{ env.RUST_MIN }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_MIN }}
+          components: rustfmt, clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bbbl-core/target
+          key: lint-${{ runner.os }}-${{ hashFiles('bbbl-core/Cargo.lock') }}
+          restore-keys: lint-${{ runner.os }}-
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (default features)
+        run: cargo clippy --all-targets -- -D warnings
+
+  # ----------------------------------------------------------
+  # 2. Desktop targets: macOS (arm64 + x86_64) and Windows x86_64.
+  #    Each produces a ready-to-ship archive with the binary and
+  #    pluggable-transport libraries in a pt/ sub-folder.
+  # ----------------------------------------------------------
+  desktop:
+    name: Build · ${{ matrix.archive }}
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---- macOS Apple Silicon ----
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            goos: darwin
+            goarch: arm64
+            archive: bbbl-core-macos-arm64.tar.gz
+
+          # ---- macOS Intel (cross-compiled) ----
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            goos: darwin
+            goarch: amd64
+            archive: bbbl-core-macos-x86_64.tar.gz
+
+          # ---- Windows x86_64 ----
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            goos: windows
+            goarch: amd64
+            archive: bbbl-core-windows-x86_64.zip
+
+    defaults:
+      run:
+        working-directory: bbbl-core
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust ${{ env.RUST_MIN }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_MIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Install Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Install NASM (Windows only)
+        if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@v1
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bbbl-core/target
+          key: desktop-${{ matrix.target }}-${{ hashFiles('bbbl-core/Cargo.lock') }}
+          restore-keys: desktop-${{ matrix.target }}-
+
+      - name: Build pluggable transports
+        shell: bash
+        run: bash ../pt-build.sh ${{ matrix.goos }} ${{ matrix.goarch }} "$PWD/pt"
+
+      - name: Build Psiphon transport
+        shell: bash
+        run: bash ../psiphon-build.sh ${{ matrix.goos }} ${{ matrix.goarch }} "$PWD/pt"
+
+      - name: Cargo build (release, with Tor)
+        run: >
+          cargo build --release
+          --features tor
+          --target ${{ matrix.target }}
+
+      - name: Package archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp -R pt target/${{ matrix.target }}/release/pt
+          cd target/${{ matrix.target }}/release
+          tar -czf ../../../${{ matrix.archive }} bbbl-core pt
+
+      - name: Package archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse -Force pt target/${{ matrix.target }}/release/pt
+          Compress-Archive `
+            -Path target/${{ matrix.target }}/release/bbbl-core.exe,
+                  target/${{ matrix.target }}/release/pt,
+                  run-bbbl-core.bat `
+            -DestinationPath ${{ matrix.archive }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: bbbl-core/${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # ----------------------------------------------------------
+  # 3. Linux glibc targets: x86_64, aarch64, armv7.
+  # ----------------------------------------------------------
+  linux:
+    name: Build · ${{ matrix.archive }}
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---- Linux x86_64 (glibc) ----
+          - target: x86_64-unknown-linux-gnu
+            goos: linux
+            goarch: amd64
+            goarm: ""
+            archive: bbbl-core-linux-x86_64.tar.gz
+
+          # ---- Linux aarch64 (glibc) ----
+          - target: aarch64-unknown-linux-gnu
+            goos: linux
+            goarch: arm64
+            goarm: ""
+            archive: bbbl-core-linux-aarch64.tar.gz
+            cross_gcc: gcc-aarch64-linux-gnu
+
+          # ---- Linux ARMv7 (glibc, hard-float) ----
+          - target: armv7-unknown-linux-gnueabihf
+            goos: linux
+            goarch: arm
+            goarm: "7"
+            archive: bbbl-core-linux-armv7.tar.gz
+            cross_gcc: gcc-arm-linux-gnueabihf
+
+    defaults:
+      run:
+        working-directory: bbbl-core
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install cross-compiler (if needed)
+        if: matrix.cross_gcc != ''
+        run: sudo apt-get update -qq && sudo apt-get install -y ${{ matrix.cross_gcc }}
+
+      - name: Install Rust ${{ env.RUST_MIN }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_MIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Install Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bbbl-core/target
+          key: linux-${{ matrix.target }}-${{ hashFiles('bbbl-core/Cargo.lock') }}
+          restore-keys: linux-${{ matrix.target }}-
+
+      - name: Build pluggable transports
+        run: bash ../pt-build.sh ${{ matrix.goos }} ${{ matrix.goarch }} "$PWD/pt" "${{ matrix.goarm }}"
+
+      - name: Build Psiphon transport
+        run: bash ../psiphon-build.sh ${{ matrix.goos }} ${{ matrix.goarch }} "$PWD/pt" "${{ matrix.goarm }}"
+
+      - name: Cargo build (release, with Tor)
+        run: >
+          cargo build --release
+          --features tor
+          --target ${{ matrix.target }}
+
+      - name: Package archive
+        run: |
+          cp -R pt target/${{ matrix.target }}/release/pt
+          cd target/${{ matrix.target }}/release
+          tar -czf ../../../${{ matrix.archive }} bbbl-core pt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: bbbl-core/${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # ----------------------------------------------------------
+  # 4. Linux musl (static) targets: x86_64, aarch64, ARMv7.
+  #    musl produces fully static binaries — no glibc dep.
+  # ----------------------------------------------------------
+  linux-musl:
+    name: Build · ${{ matrix.archive }}
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            goos: linux
+            goarch: amd64
+            goarm: ""
+            archive: bbbl-core-linux-x86_64-musl.tar.gz
+            musl_gcc: musl-tools
+
+          - target: aarch64-unknown-linux-musl
+            goos: linux
+            goarch: arm64
+            goarm: ""
+            archive: bbbl-core-linux-aarch64-musl.tar.gz
+            musl_gcc: musl-tools
+
+          - target: armv7-unknown-linux-musleabihf
+            goos: linux
+            goarch: arm
+            goarm: "7"
+            archive: bbbl-core-linux-armv7-musl.tar.gz
+            musl_gcc: musl-tools
+
+    defaults:
+      run:
+        working-directory: bbbl-core
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install musl toolchain
+        run: sudo apt-get update -qq && sudo apt-get install -y ${{ matrix.musl_gcc }}
+
+      - name: Install Rust ${{ env.RUST_MIN }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_MIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Install Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bbbl-core/target
+          key: musl-${{ matrix.target }}-${{ hashFiles('bbbl-core/Cargo.lock') }}
+          restore-keys: musl-${{ matrix.target }}-
+
+      - name: Build pluggable transports
+        run: bash ../pt-build.sh ${{ matrix.goos }} ${{ matrix.goarch }} "$PWD/pt" "${{ matrix.goarm }}"
+
+      - name: Build Psiphon transport
+        run: bash ../psiphon-build.sh ${{ matrix.goos }} ${{ matrix.goarch }} "$PWD/pt" "${{ matrix.goarm }}"
+
+      - name: Cargo build (release, with Tor)
+        run: >
+          cargo build --release
+          --features tor
+          --target ${{ matrix.target }}
+
+      - name: Package archive
+        run: |
+          cp -R pt target/${{ matrix.target }}/release/pt
+          cd target/${{ matrix.target }}/release
+          tar -czf ../../../${{ matrix.archive }} bbbl-core pt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: bbbl-core/${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # ----------------------------------------------------------
+  # 5. Android: arm64-v8a, armeabi-v7a, x86_64.
+  # ----------------------------------------------------------
+  android:
+    name: Build · ${{ matrix.archive }}
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-linux-android
+            abi: arm64-v8a
+            goos: linux
+            goarch: arm64
+            goarm: ""
+            archive: bbbl-core-android-arm64.tar.gz
+
+          - target: armv7-linux-androideabi
+            abi: armeabi-v7a
+            goos: linux
+            goarch: arm
+            goarm: "7"
+            archive: bbbl-core-android-armv7.tar.gz
+
+          - target: x86_64-linux-android
+            abi: x86_64
+            goos: linux
+            goarch: amd64
+            goarm: ""
+            archive: bbbl-core-android-x86_64.tar.gz
+
+    defaults:
+      run:
+        working-directory: bbbl-core
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust ${{ env.RUST_MIN }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_MIN }}
+          targets: ${{ matrix.target }}
+
+      - name: Install Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install CMake + Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Install Android NDK r26d
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26d
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            bbbl-core/target
+          key: android-${{ matrix.target }}-${{ hashFiles('bbbl-core/Cargo.lock') }}
+          restore-keys: android-${{ matrix.target }}-
+
+      - name: Build pluggable transports
+        run: bash ../pt-build.sh ${{ matrix.goos }} ${{ matrix.goarch }} "$PWD/pt" "${{ matrix.goarm }}"
+
+      - name: Build Psiphon transport
+        run: bash ../psiphon-build.sh ${{ matrix.goos }} ${{ matrix.goarch }} "$PWD/pt" "${{ matrix.goarm }}"
+
+      - name: Cargo build via cargo-ndk (release, with Tor)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          under=$(echo "${{ matrix.target }}" | tr '-' '_')
+          export "BORING_BSSL_RUST_CPPLIB_${under}=static:-bundle=c++"
+          cargo ndk -t ${{ matrix.abi }} --platform 24 build --release --features tor
+          bin="target/${{ matrix.target }}/release/bbbl-core"
+          needed=$(readelf -d "$bin" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')
+          echo "[android ${{ matrix.abi }}] NEEDED: $needed"
+          if grep -qx 'libc++_shared.so' <<< "$needed"; then
+            echo "ERROR: still linked against libc++_shared.so — static link failed"
+            exit 1
+          fi
+
+      - name: Package archive
+        run: |
+          cp -R pt target/${{ matrix.target }}/release/pt
+          cd target/${{ matrix.target }}/release
+          tar -czf ../../../${{ matrix.archive }} bbbl-core pt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: bbbl-core/${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # ----------------------------------------------------------
+  # 6. Docker: build & push to GHCR on tag pushes or manual
+  #    dispatch with release=true.  On PRs / branch pushes it
+  #    still builds but does NOT push (validates the Dockerfile).
+  # ----------------------------------------------------------
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.release == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Repository names in GHCR must be lowercase.
+      - name: Derive lowercase image name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+            type=sha,prefix=sha-,format=short
+          labels: |
+            org.opencontainers.image.title=BBBL-Core
+            org.opencontainers.image.description=BBBL-Core proxy client — Created by Muvixo
+            org.opencontainers.image.vendor=Muvixo
+
+      - name: Build (and conditionally push) Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.release == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ----------------------------------------------------------
+  # 7. Release: collect every artifact, checksum, publish.
+  #    Only runs on tag pushes or manual dispatch with
+  #    release=true.  Runs even if some build legs failed so a
+  #    single broken platform doesn't block the whole release.
+  # ----------------------------------------------------------
+  release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: [ desktop, linux, linux-musl, android, docker ]
+    if: >-
+      always() &&
+      (startsWith(github.ref, 'refs/tags/') || github.event.inputs.release == 'true')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        run: |
+          cd dist
+          shopt -s nullglob
+          files=(*.tar.gz *.zip)
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "No release archives found — nothing to checksum."
+            exit 0
+          fi
+          for f in "${files[@]}"; do
+            sha256sum "$f" > "$f.sha256"
+          done
+          sha256sum "${files[@]}" > SHA256SUMS.txt
+          echo "===== SHA256SUMS.txt ====="
+          cat SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: dist/**/*
+          body: |
+            ## BBBL-Core — ${{ github.ref_name }}
+
+            > **Created by Muvixo**
+
+            BBBL-Core is a user-space proxy client. It tunnels traffic out of a filtered network and exposes a local SOCKS5 proxy on `127.0.0.1:1819`.
+
+            ### Platforms
+            | Archive | Platform |
+            |---------|----------|
+            | `bbbl-core-macos-arm64.tar.gz`      | macOS Apple Silicon |
+            | `bbbl-core-macos-x86_64.tar.gz`     | macOS Intel |
+            | `bbbl-core-windows-x86_64.zip`      | Windows x86_64 |
+            | `bbbl-core-linux-x86_64.tar.gz`     | Linux x86_64 (glibc) |
+            | `bbbl-core-linux-aarch64.tar.gz`    | Linux aarch64 (glibc) |
+            | `bbbl-core-linux-armv7.tar.gz`      | Linux ARMv7 (glibc) |
+            | `bbbl-core-linux-x86_64-musl.tar.gz`  | Linux x86_64 (static musl) |
+            | `bbbl-core-linux-aarch64-musl.tar.gz` | Linux aarch64 (static musl) |
+            | `bbbl-core-linux-armv7-musl.tar.gz`   | Linux ARMv7 (static musl) |
+            | `bbbl-core-android-arm64.tar.gz`    | Android arm64-v8a |
+            | `bbbl-core-android-armv7.tar.gz`    | Android armeabi-v7a |
+            | `bbbl-core-android-x86_64.tar.gz`   | Android x86_64 |
+
+            Every archive ships with a matching `.sha256` file.  
+            `SHA256SUMS.txt` lists every archive in one place.
+
+            See `README.md` and the `Docs/` directory for setup, transport selection, and the full environment-variable reference.
