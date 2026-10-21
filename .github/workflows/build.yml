@@ -37,6 +37,10 @@ jobs:
   # ----------------------------------------------------------
   # 1. Quick check: fmt + clippy on the host triple only.
   #    Runs on every push/PR so issues surface fast.
+  #    NOTE: fmt is scoped to `-p bbbl-core` on purpose — the
+  #    vendored `quiche/` and `octets/` path deps are upstream
+  #    code and must not be reformatted (it would create merge
+  #    noise on every future quiche sync).
   # ----------------------------------------------------------
   lint:
     name: Lint (fmt + clippy)
@@ -66,7 +70,7 @@ jobs:
           restore-keys: lint-${{ runner.os }}-
 
       - name: Check formatting
-        run: cargo fmt --all -- --check
+        run: cargo fmt -p bbbl-core -- --check
 
       - name: Clippy (default features)
         run: cargo clippy --all-targets -- -D warnings
