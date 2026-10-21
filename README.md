@@ -5,7 +5,7 @@
 ### اینترنت آزاد برای همه:))
 **[راهنمای فارسی](README.fa.md)** · **[English Guide](Docs/DOCS.en.md)** · **[راهنمای کامل فارسی](Docs/DOCS.fa.md)**
 
-Telegram: https://t.me/CluvexStudio
+Telegram: https://t.me/bbblofficial
 
 BBBL-Core is a censorship circumvention client designed for heavily restricted networks. It automatically discovers reachable routes, establishes an encrypted tunnel, and exposes a local SOCKS5 proxy for your applications.
 
@@ -30,7 +30,7 @@ Unlike traditional VPN clients, BBBL-Core is built for environments where Deep P
 
 ## Download
 
-Prebuilt binaries are on the [Releases](https://github.com/CluvexStudio/BBBL-Core/releases/latest) page. Pick the archive that matches your system:
+Prebuilt binaries are on the [Releases](https://github.com/bbblofficial/BBBL-Core/releases/latest) page. Pick the archive that matches your system:
 
 | System | Archive |
 | --- | --- |
@@ -53,7 +53,7 @@ xattr -d com.apple.quarantine bbbl-core
 ### Termux (Android) — one-line install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CluvexStudio/bbbl-core/main/bbbl-core.sh -o bbbl-core.sh && chmod +x bbbl-core.sh && ./bbbl-core.sh install
+curl -fsSL https://raw.githubusercontent.com/bbblofficial/bbbl-core/main/bbbl-core.sh -o bbbl-core.sh && chmod +x bbbl-core.sh && ./bbbl-core.sh install
 ```
 
 This detects your device architecture, downloads the matching release, verifies its checksum, and installs `bbbl-core` into `$PREFIX/bin`. Run it afterwards with:
@@ -79,8 +79,8 @@ MIPS routers (`mips`/`mipsel`, e.g. MT7621) are not supported.
 ```sh
 cd /tmp
 A=bbbl-core-linux-aarch64-musl.tar.gz
-wget https://github.com/CluvexStudio/BBBL-Core/releases/latest/download/$A
-wget https://github.com/CluvexStudio/BBBL-Core/releases/latest/download/$A.sha256
+wget https://github.com/bbblofficial/BBBL-Core/releases/latest/download/$A
+wget https://github.com/bbblofficial/BBBL-Core/releases/latest/download/$A.sha256
 sha256sum -c $A.sha256 && tar -xzf $A && mv bbbl-core /usr/bin/bbbl-core
 mkdir -p /etc/bbbl-core
 bbbl-core --config /etc/bbbl-core/bbbl-core.toml
@@ -130,7 +130,7 @@ The `-v bbbl-core-data:/data` volume keeps the generated WARP identity between r
 Pull and run the pre-built image (interactive mode is required for initial setup):
 
 ```bash
-docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data ghcr.io/cluvexstudio/bbbl-core:latest
+docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data ghcr.io/bbblofficial/bbbl-core:latest
 ```
 
 You can also bypass prompts by providing environment variables:
@@ -139,7 +139,7 @@ You can also bypass prompts by providing environment variables:
 docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data \
   -e BBBL-CORE_PROTOCOL=masque \
   -e BBBL-CORE_SCAN=balanced \
-  ghcr.io/cluvexstudio/bbbl-core:latest
+  ghcr.io/bbblofficial/bbbl-core:latest
 ```
 
 If you prefer to build the image manually from source:
@@ -240,7 +240,7 @@ Detailed documentation is available in:
 
 ## Credits
 
-Developed by **CluvexStudio**. :))
+Developed by **bbblofficial**. :))
 
 MASQUE support is built on top of Cloudflare's **Quiche** library.
 

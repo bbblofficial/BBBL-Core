@@ -313,7 +313,7 @@ BBBL-CORE_QUICK_RECONNECT=1 ./target/release/bbbl-core --masque
 docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data \
   -e BBBL-CORE_PROTOCOL=masque \
   -e BBBL-CORE_SCAN=balanced \
-  ghcr.io/cluvexstudio/bbbl-core:latest
+  ghcr.io/bbblofficial/bbbl-core:latest
 ```
 *(پرچم `-it` برای وقتی که متغیرهای محیطی رو از قبل ندادی و نیاز به پاسخ دادن به سؤالات تعاملی داری، ضروریه.)*
 

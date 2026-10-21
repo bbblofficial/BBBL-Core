@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -uo pipefail
 
-readonly REPO="CluvexStudio/BBBL-Core"
+readonly REPO="bbblofficial/BBBL-Core"
 readonly BIN_NAME="bbbl-core"
 readonly PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 readonly INSTALL_PATH="${PREFIX}/bin/${BIN_NAME}"

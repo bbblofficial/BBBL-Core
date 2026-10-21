@@ -11,7 +11,7 @@ if [ -z "$goos" ] || [ -z "$goarch" ] || [ -z "$out" ]; then
     exit 2
 fi
 
-repo="https://github.com/CluvexStudio/psiphon-tunnel-core.git"
+repo="https://github.com/bbblofficial/psiphon-tunnel-core.git"
 branch="shirokhorshid"
 commit="83aa73b9b982e7421e00117f5b0c5aceb5dda452"
 

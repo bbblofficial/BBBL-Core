@@ -39,7 +39,7 @@ BBBL-Core یک کلاینت دور زدن سانسور اینترنت است ک�
 این دستور رو کپی کن و توی ترموکس بزن:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CluvexStudio/bbbl-core/main/bbbl-core.sh -o bbbl-core.sh && chmod +x bbbl-core.sh && ./bbbl-core.sh install
+curl -fsSL https://raw.githubusercontent.com/bbblofficial/bbbl-core/main/bbbl-core.sh -o bbbl-core.sh && chmod +x bbbl-core.sh && ./bbbl-core.sh install
 ```
 
 این اسکریپت خودش معماری دستگاهت رو تشخیص می‌ده، نسخه‌ی مناسب رو دانلود می‌کنه، چک‌سامش رو تأیید می‌کنه و `bbbl-core` رو توی `$PREFIX/bin` نصب می‌کنه. بعدش با دستور زیر اجراش کن:
@@ -91,7 +91,7 @@ bbbl-core/target/release/bbbl-core
 دریافت و اجرای ایمیج از پیش‌ساخته‌شده (برای تنظیمات اولیه به حالت تعاملی نیاز است):
 
 ```bash
-docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data ghcr.io/cluvexstudio/bbbl-core:latest
+docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data ghcr.io/bbblofficial/bbbl-core:latest
 ```
 
 همچنین می‌توانید با ارسال متغیرهای محیطی از پرسش‌های اولیه عبور کنید:
@@ -100,7 +100,7 @@ docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data ghcr.io/cluvexstud
 docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data \
   -e BBBL-CORE_PROTOCOL=masque \
   -e BBBL-CORE_SCAN=balanced \
-  ghcr.io/cluvexstudio/bbbl-core:latest
+  ghcr.io/bbblofficial/bbbl-core:latest
 ```
 
 در صورتی که ترجیح می‌دهید ایمیج را خودتان بیلد کنید:
@@ -173,11 +173,11 @@ gool قدیمی: یک اتصال WireGuard که داخل یک اتصال WireGua
 
 ## سازندگان
 
-توسعه داده شده توسط **CluvexStudio**. :))
+توسعه داده شده توسط **bbblofficial**. :))
 
 بخش MASQUE این پروژه بر پایه کتابخانه **Quiche** از Cloudflare توسعه یافته است.
 
-تلگرام: https://t.me/CluvexStudio
+تلگرام: https://t.me/bbblofficial
 
 ## مشارکت
 

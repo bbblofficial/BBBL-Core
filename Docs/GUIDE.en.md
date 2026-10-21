@@ -311,7 +311,7 @@ The `-v bbbl-core-data:/data` volume keeps the WARP identity across restarts. Sk
 docker run -it -p 127.0.0.1:1819:1819 -v bbbl-core-data:/data \
   -e BBBL-CORE_PROTOCOL=masque \
   -e BBBL-CORE_SCAN=balanced \
-  ghcr.io/cluvexstudio/bbbl-core:latest
+  ghcr.io/bbblofficial/bbbl-core:latest
 ```
 *(The `-it` flag is necessary for interactive prompts if you do not provide the environment variables beforehand.)*
 

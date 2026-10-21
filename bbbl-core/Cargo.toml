@@ -3,12 +3,12 @@ name = "bbbl-core"
 version = "2.3.0"
 edition = "2021"
 rust-version = "1.98"
-authors = ["CluvexStudio"]
+authors = ["bbblofficial"]
 license = "AGPL-3.0-only"
-repository = "https://github.com/CluvexStudio/bbbl-core"
+repository = "https://github.com/bbblofficial/bbbl-core"
 
 [lib]
-name = "bbbl-core"
+name = "bbbl_core"
 path = "src/lib.rs"
 crate-type = ["lib", "staticlib", "cdylib"]
 

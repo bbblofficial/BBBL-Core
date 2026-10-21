@@ -663,7 +663,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Docker requires repository names to be strictly lowercase.
-      # Since CluvexStudio contains uppercase, we lowercase it here.
+      # Since bbblofficial contains uppercase, we lowercase it here.
       - name: Downcase repository name
         run: |
           echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> ${GITHUB_ENV}
